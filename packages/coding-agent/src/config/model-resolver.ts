@@ -910,7 +910,7 @@ function parseModelPatternWithContext(
 	pattern: string,
 	availableModels: Model<Api>[],
 	context: ModelPreferenceContext,
-	options?: { allowInvalidThinkingSelectorFallback?: boolean },
+	options?: { allowInvalidThinkingSelectorFallback?: boolean; exactOnly?: boolean },
 ): ParsedModelResult {
 	// Exact match on the full pattern first (no fuzzy): a literal id that
 	const exactMatch = matchModel(pattern, availableModels, context, { exactOnly: true });
@@ -929,7 +929,7 @@ function parseModelPatternWithContext(
 	// fuzzy results (e.g. `kimi-for-coding-highspeed`) cannot absorb the suffix.
 	const { base, level } = splitThinkingSuffix(pattern, -1, MAX_THINKING_SUFFIX_OPTIONS);
 	if (level) {
-		const literalSuffixMatch = matchModel(pattern, availableModels, context);
+		const literalSuffixMatch = matchModel(pattern, availableModels, context, options);
 		if (literalSuffixMatch?.id.toLowerCase().endsWith(`:${level}`)) {
 			return {
 				model: literalSuffixMatch,
@@ -960,7 +960,7 @@ function parseModelPatternWithContext(
 
 	// No valid thinking suffix: fall back to fuzzy/substring matching on the
 	// whole pattern.
-	const fallbackMatch = matchModel(pattern, availableModels, context);
+	const fallbackMatch = matchModel(pattern, availableModels, context, options);
 	if (fallbackMatch) {
 		return { model: fallbackMatch, thinkingLevel: undefined, warning: undefined, explicitThinkingLevel: false };
 	}
@@ -998,7 +998,7 @@ function matchPatternWithContext(
 	pattern: string,
 	availableModels: Model<Api>[],
 	context: ModelPreferenceContext,
-	options?: { allowInvalidThinkingSelectorFallback?: boolean },
+	options?: { allowInvalidThinkingSelectorFallback?: boolean; exactOnly?: boolean },
 ): ParsedModelResult {
 	const direct = parseModelPatternWithContext(pattern, availableModels, context, options);
 	if (direct.model) return direct;
@@ -1444,13 +1444,24 @@ export function resolveModelRoleValue(
 	}
 
 	let warning: string | undefined;
+	const missingExactSelectors: string[] = [];
 	const matchPreferences = mergeModelMatchPreferences(options?.settings, options?.matchPreferences);
 	// Build the O(n) preference context (model-order map over all available
 	// models) once and reuse it across every fallback pattern instead of
 	// rebuilding it per pattern inside parseModelPattern.
 	const preferenceContext = buildPreferenceContext(availableModels, matchPreferences);
 	for (const [patternIndex, effectivePattern] of effectivePatterns.entries()) {
-		const resolved = matchPatternWithContext(effectivePattern, availableModels, preferenceContext);
+		// A literal provider/id role selector is a pin, not shorthand for a sibling.
+		// Unknown prefixes may be part of a raw id; globs keep their existing behaviour.
+		const slashIndex = effectivePattern.indexOf("/");
+		const provider = effectivePattern.substring(0, slashIndex).trim().toLowerCase();
+		const exactOnly =
+			slashIndex > 0 &&
+			!effectivePattern.includes("*") &&
+			!effectivePattern.includes("?") &&
+			!effectivePattern.includes("[") &&
+			availableModels.some(model => model.provider.toLowerCase() === provider);
+		const resolved = matchPatternWithContext(effectivePattern, availableModels, preferenceContext, { exactOnly });
 		if (resolved.model) {
 			return {
 				model: resolved.model,
@@ -1464,9 +1475,14 @@ export function resolveModelRoleValue(
 				warning: resolved.warning,
 			};
 		}
+		if (exactOnly) missingExactSelectors.push(effectivePattern);
 		if (!warning && resolved.warning) {
 			warning = resolved.warning;
 		}
+	}
+	if (missingExactSelectors.length > 0) {
+		const missingWarning = `Exact role selectors not found: ${missingExactSelectors.join(", ")}`;
+		warning = warning ? `${warning} ${missingWarning}` : missingWarning;
 	}
 
 	return { model: undefined, thinkingLevel: undefined, explicitThinkingLevel: false, warning };

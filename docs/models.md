@@ -633,6 +633,13 @@ Resolution precedence for exact selectors:
 3. retired effort-tier variant alias (collapsed catalog entries, e.g. `X`/`X-thinking` twins)
 4. provider-scoped fuzzy match, then substring matching with an alias-vs-dated pick
 
+Configured role selectors (including agent overrides) in literal `provider/modelId` form, optionally
+with a `:thinkingLevel` suffix, stop after steps 1–3 when the provider prefix is known in the candidate
+set. They are exact pins: a missing selector falls through to the next comma-separated fallback,
+never a fuzzy sibling model id. If every fallback misses, the warning names the missing exact
+selectors. Bare shorthand, globs, unknown provider prefixes, and interactive CLI `--model` matching
+keep their existing behaviour.
+
 Glob scope patterns (used by `enabledModels` and CLI `--models`) run separately over concrete models after exact matching.
 
 When a bare id matches models from multiple providers, preference order is:

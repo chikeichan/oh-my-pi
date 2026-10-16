@@ -1109,6 +1109,70 @@ describe("resolveModelRoleValue", () => {
 		expect(result.explicitThinkingLevel).toBe(true);
 		expect(result.warning).toBeUndefined();
 	});
+
+	describe("provider/id role selectors resolve exactly", () => {
+		// Discovery roster thinned: the bare `claude-opus-5-5` is missing, its `-high` sibling is not.
+		const thinnedRoster = [
+			roleChainModel("cliproxy", "claude-opus-5-5-high"),
+			roleChainModel("cliproxy", "gpt-6.1-sol"),
+		];
+
+		test("a missing exact selector falls through to the next fallback, not a sibling id", () => {
+			const result = resolveModelRoleValue("cliproxy/claude-opus-5-5:high, cliproxy/gpt-6.1-sol", thinnedRoster);
+
+			expect(result.model?.provider).toBe("cliproxy");
+			expect(result.model?.id).toBe("gpt-6.1-sol");
+			expect(result.matchedPatternIndex).toBe(1);
+		});
+
+		test("an exact selector with no fallback resolves to no model and names the missing selector", () => {
+			const result = resolveModelRoleValue("cliproxy/claude-opus-5-5:high", thinnedRoster);
+
+			expect(result.model).toBeUndefined();
+			expect(result.warning).toContain("cliproxy/claude-opus-5-5");
+
+			const override = resolveModelOverride(["cliproxy/claude-opus-5-5:high"], {
+				getAvailable: () => thinnedRoster,
+			});
+			expect(override.model).toBeUndefined();
+			expect(override.warning).toContain("cliproxy/claude-opus-5-5");
+		});
+
+		test("bare shorthand without a provider prefix still fuzzy-resolves", () => {
+			const result = resolveModelRoleValue("opus-5-5-high", thinnedRoster);
+
+			expect(result.model?.provider).toBe("cliproxy");
+			expect(result.model?.id).toBe("claude-opus-5-5-high");
+			expect(result.warning).toBeUndefined();
+		});
+
+		test("names every missing exact selector when all fallbacks miss", () => {
+			const result = resolveModelRoleValue("cliproxy/claude-opus-5-5:high, cliproxy/gpt-6.1", thinnedRoster);
+
+			expect(result.model).toBeUndefined();
+			expect(result.warning).toContain("cliproxy/claude-opus-5-5:high");
+			expect(result.warning).toContain("cliproxy/gpt-6.1");
+		});
+
+		test("expanded task role and agent override use the same exact fallback semantics", () => {
+			const settings = Settings.isolated({
+				modelRoles: { task: "cliproxy/claude-opus-5-5:high, cliproxy/gpt-6.1-sol" },
+			});
+			const result = resolveModelOverride(["@task"], { getAvailable: () => thinnedRoster }, settings);
+
+			expect(result.model?.id).toBe("gpt-6.1-sol");
+			expect(result.warning).toBeUndefined();
+		});
+
+		test("interactive CLI provider-scoped fuzzy matching is unchanged", () => {
+			const result = resolveCliModel({
+				cliModel: "cliproxy/claude-opus-5-5:high",
+				modelRegistry: { getAll: () => thinnedRoster, getAvailable: () => thinnedRoster },
+			});
+
+			expect(result.model?.id).toBe("claude-opus-5-5-high");
+		});
+	});
 });
 describe("resolveAgentPrewalkPattern", () => {
 	test("agent definition alone decides: true → default target, pattern → custom, false/absent → off", () => {

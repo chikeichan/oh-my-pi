@@ -57,6 +57,7 @@
 - Fixed cancelling a bash job hard-killing it before its TERM cleanup handlers could run; it now gets up to one second to clean up before termination is forced ([#15709](https://github.com/can1357/oh-my-pi/pull/15709) by [@mg-mg-mg](https://github.com/mg-mg-mg))
 - Fixed the transcript collapsing to one line per entry after switching between a subagent and the main session mid-turn when an earlier turn left a tool call without a result ([#12247](https://github.com/can1357/oh-my-pi/issues/12247), [#15466](https://github.com/can1357/oh-my-pi/pull/15466) by [@shgew](https://github.com/shgew))
 - Fixed a retried tool losing its transcript card when the view was rebuilt (subagent focus switch, overlay close) while the tool was still running
+- Fixed a configured role or agent model in `provider/model` form (e.g. `cliproxy/claude-opus-5-5:high`) silently resolving to a similarly named model (`claude-opus-5-5-high`) when that exact model was missing; it now falls through to the next fallback and the warning names the selectors that were not found
 
 ## [18.11.1] - 2026-10-15
 
